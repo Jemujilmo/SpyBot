@@ -329,9 +329,11 @@
                 <div style="text-align: center; opacity: 0.9;" id="gammaStatus">NORMAL</div>
             </div>
 
-            <!-- Main Chart -->
+            <!-- Main Charts: 1m (top), 5m (middle), 15m (bottom) -->
             <div class="chart-container">
-                <div id="chart"></div>
+                <div id="chart1" style="margin-bottom: 12px;"></div>
+                <div id="chart5" style="margin-bottom: 12px;"></div>
+                <div id="chart15"></div>
             </div>
 
             <!-- Grid for Walls and Signals -->
@@ -407,37 +409,44 @@
                 // Update gamma indicator
                 updateGammaIndicator(data.gamma_score);
 
-                // Update chart (use Plotly.react for smooth updates without flickering)
-                const chartData = JSON.parse(data.chart || '{}');
-                const config = {responsive: true, displayModeBar: true};
-                const chartContainer = document.getElementById('chart');
+                // Update three independent charts (1m, 5m, 15m)
+                const charts = [
+                    {id: 'chart1', payload: data.chart_1m},
+                    {id: 'chart5', payload: data.chart_5m},
+                    {id: 'chart15', payload: data.chart_15m}
+                ];
 
-                // Defensive checks
-                if (!chartData.data) {
-                    console.warn('No chart data received');
-                } else {
-                    // Ensure layout exists and is responsive
-                    const layout = chartData.layout || {};
-                    layout.autosize = true;
-                    // Prefer letting Plotly handle sizing via responsive: true and resize
-                    // Provide a sensible height so the chart is visible on first render
-                    layout.height = layout.height || Math.max(480, Math.floor(window.innerHeight * 0.6));
+                const baseConfig = {responsive: true};
 
-                    if (isFirstLoad) {
-                        await Plotly.newPlot('chart', chartData.data, layout, config);
-                        isFirstLoad = false;
+                for (const c of charts) {
+                    try {
+                        if (!c.payload) {
+                            console.debug(`No payload for ${c.id}`);
+                            continue;
+                        }
 
-                        // Use Plotly's resize helper which is more reliable than manual relayout
-                        window.addEventListener('resize', () => {
-                            try { Plotly.Plots.resize(document.getElementById('chart')); } catch(e){}
-                        });
-                    } else {
-                        // Use react for efficient updates
-                        await Plotly.react('chart', chartData.data, layout, config);
-                        // Ensure plot fills the container after react
-                        try { Plotly.Plots.resize(document.getElementById('chart')); } catch(e){}
+                        let payload = c.payload;
+                        // If server returned a string, parse it
+                        if (typeof payload === 'string') payload = JSON.parse(payload || '{}');
+
+                        const layout = payload.layout || {};
+                        layout.autosize = true;
+                        layout.height = layout.height || Math.max(240, Math.floor(window.innerHeight * 0.25));
+
+                        const config = Object.assign({}, baseConfig, {displayModeBar: true, modeBarButtonsToRemove: []});
+
+                        if (isFirstLoad) {
+                            await Plotly.newPlot(c.id, payload.data || [], layout, config);
+                        } else {
+                            await Plotly.react(c.id, payload.data || [], layout, config);
+                            try { Plotly.Plots.resize(document.getElementById(c.id)); } catch(e){}
+                            try { Plotly.relayout(document.getElementById(c.id), {'xaxis.autorange': true}); } catch(e){}
+                        }
+                    } catch (err) {
+                        console.error('Failed to render chart', c.id, err);
                     }
                 }
+                isFirstLoad = false;
 
                 // Update walls
                 updateWalls(data.walls);

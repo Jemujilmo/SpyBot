@@ -395,7 +395,15 @@
                 updateGammaIndicator(data.gamma_score);
 
                 // Update chart (use Plotly.react for smooth updates without flickering)
-                const chartData = JSON.parse(data.chart || '{}');
+                // Accept either a stringified JSON (older server) or an already-parsed object
+                let chartData;
+                try {
+                    if (typeof data.chart === 'string') chartData = JSON.parse(data.chart || '{}');
+                    else chartData = data.chart || {};
+                } catch (err) {
+                    console.error('Failed to parse chart payload', err);
+                    chartData = {};
+                }
                 const config = {responsive: true, displayModeBar: true};
                 const chartContainer = document.getElementById('chart');
 
@@ -415,6 +423,7 @@
                     } else {
                         await Plotly.react('chart', chartData.data, layout, config);
                         try { Plotly.Plots.resize(document.getElementById('chart')); } catch(e){}
+                        try { Plotly.relayout(document.getElementById('chart'), {'xaxis.autorange': true, 'xaxis3.autorange': true}); } catch(e){}
                     }
                 }
 
