@@ -29,5 +29,5 @@ BIAS_THRESHOLDS = {
 DATA_PERIOD = "5d"  # Fetch last 5 days to ensure enough data for calculations
 
 # Rate limiting (to avoid Yahoo Finance API limits)
-REQUEST_DELAY = 2.0  # Seconds between requests (1800 requests/hour at 2s)
+REQUEST_DELAY = 0.5  # Seconds between requests (with parallel fetching, this is less critical)
 MAX_REQUESTS_PER_HOUR = 1800  # Safety margin below Yahoo's ~2000/hour limit

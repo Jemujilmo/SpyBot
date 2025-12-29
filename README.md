@@ -17,7 +17,8 @@ pip install -r requirements.txt
 # 3. Run the system
 python market_copilot.py
 ```
-
+# terminal command is "cd "C:\Users\Kryst\Code Stuff\spytradebot"
+.venv\Scripts\python.exe flask_app.py --port=5050"
 ---
 
 ### Web dashboard (Flask + Plotly) — quick commands

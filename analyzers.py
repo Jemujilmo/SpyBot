@@ -66,28 +66,8 @@ class SentimentAnalyzer:
             last_close = float(data_5m['Close'].iloc[-1])
             last_timestamp = data_5m.index[-1]
             
-            # Time-based filter: Only signal during tradable hours
-            # Convert to US/Eastern time
-            try:
-                import pytz
-                et_tz = pytz.timezone('US/Eastern')
-                if hasattr(last_timestamp, 'tz_localize'):
-                    ts_et = last_timestamp.tz_localize('UTC').tz_convert(et_tz) if last_timestamp.tz is None else last_timestamp.tz_convert(et_tz)
-                else:
-                    ts_et = last_timestamp
-                
-                hour = ts_et.hour
-                minute = ts_et.minute
-                
-                # Block signals outside 9:45 AM - 3:45 PM ET
-                if hour < 9 or (hour == 9 and minute < 45):
-                    return []  # Before 9:45 AM - market opening volatility
-                if hour >= 15 and minute >= 45:
-                    return []  # After 3:45 PM - closing hour, low liquidity
-                if hour >= 16:
-                    return []  # Market closed
-            except Exception:
-                pass  # If timezone conversion fails, continue without filter
+            # Time filter disabled for after-hours testing
+            # You can re-enable this during market hours if needed
             
             # Get indicators for current candle
             last_vwap = float(indicators_5m['VWAP'].iloc[-1]) if 'VWAP' in indicators_5m else None
@@ -138,8 +118,8 @@ class SentimentAnalyzer:
                 elif last_rsi < 30:  # Oversold - penalize sells
                     sell_score -= 15
             
-            # Generate signal if score > threshold (60%)
-            if buy_score >= 60:
+            # Generate signal if score > threshold (50% - more lenient)
+            if buy_score >= 50:
                 signals.append({
                     'timestamp': last_timestamp,
                     'price': last_close,
@@ -147,7 +127,8 @@ class SentimentAnalyzer:
                     'strength': min(100, buy_score),
                     'label': f'BUY ({buy_score}%)'
                 })
-            elif sell_score >= 60:
+                print(f"✅ BUY signal generated: {buy_score}% at ${last_close:.2f}")
+            elif sell_score >= 50:
                 signals.append({
                     'timestamp': last_timestamp,
                     'price': last_close,
@@ -155,6 +136,9 @@ class SentimentAnalyzer:
                     'strength': min(100, sell_score),
                     'label': f'SELL ({sell_score}%)'
                 })
+                print(f"✅ SELL signal generated: {sell_score}% at ${last_close:.2f}")
+            else:
+                print(f"ℹ️ No signal: BUY={buy_score}%, SELL={sell_score}%")
                 
         except Exception as e:
             # Be tolerant: return empty signals on any failure

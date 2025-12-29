@@ -256,7 +256,8 @@ def synthesize_signals_demo(signals):
 def print_signal_demo(signal):
     """
     Print the demo signal in formatted output.
-    """⚠️  DEMO MODE: Using FICTIONAL example values (NOT real p
+    """
+    # ⚠️  DEMO MODE: Using FICTIONAL example values (NOT real prices)
     print("\n" + "="*80)
     print(f"  MARKET COPILOT DEMO - {signal['ticker']} Analysis")
     print(f"  {signal['analysis_timestamp']}")

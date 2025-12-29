@@ -29,11 +29,9 @@ import plotly.graph_objects as go
 
 app = Flask(__name__)
 
-# Lightweight cache for API payloads
+# Lightweight cache for API payloads (per-ticker)
 _cache_lock = threading.Lock()
-_cached_payload = None
-_cached_at = 0
-_is_building = False
+_ticker_cache = {}  # {ticker: {'payload': {...}, 'cached_at': timestamp, 'is_building': bool}}
 CACHE_TTL = 5  # seconds
 
 
@@ -142,6 +140,21 @@ def _build_price_volume_figure(data, indicators, title, timeframe_label, ticker=
     except Exception:
         custom = [[None, None, None, None] for _ in range(len(data))]
 
+    # Calculate price change for each candle
+    price_changes = []
+    percent_changes = []
+    for i in range(len(data)):
+        try:
+            open_price = float(data['Open'].iloc[i])
+            close_price = float(data['Close'].iloc[i])
+            change = close_price - open_price
+            pct_change = (change / open_price * 100) if open_price != 0 else 0
+            price_changes.append(f"{change:+.2f}")
+            percent_changes.append(f"{pct_change:+.2f}%")
+        except:
+            price_changes.append("N/A")
+            percent_changes.append("N/A")
+
     fig.add_trace(go.Candlestick(
         x=data.index, 
         open=data['Open'], 
@@ -150,12 +163,25 @@ def _build_price_volume_figure(data, indicators, title, timeframe_label, ticker=
         close=data['Close'],
         name=f'{ticker} {timeframe_label}',
         text=formatted_times,
-        customdata=custom,
-        hovertemplate='<b>%{text}</b><br>' +
-                      'Open: $%{open:.2f}<br>' +
-                      'High: $%{high:.2f}<br>' +
-                      'Low: $%{low:.2f}<br>' +
-                      'Close: $%{close:.2f}<extra></extra>'
+        customdata=list(zip(price_changes, percent_changes)),
+        increasing_line_color='#00FF41',
+        decreasing_line_color='#FF0000',
+        increasing_fillcolor='rgba(0, 255, 65, 0.7)',
+        decreasing_fillcolor='rgba(255, 0, 0, 0.7)',
+        line=dict(width=1),
+        hovertemplate='<b style="font-size:14px">%{text}</b><br>' +
+                      '<span style="color:#00BFFF">━━━━━━━━━━━━━━━━</span><br>' +
+                      '<b>Open:</b> $%{open:.2f}<br>' +
+                      '<b>High:</b> $%{high:.2f}<br>' +
+                      '<b>Low:</b> $%{low:.2f}<br>' +
+                      '<b>Close:</b> $%{close:.2f}<br>' +
+                      '<b>Change:</b> %{customdata[0]} (%{customdata[1]})<br>' +
+                      '<extra></extra>',
+        hoverlabel=dict(
+            bgcolor='rgba(0, 0, 0, 0.9)',
+            bordercolor='#00FF41',
+            font=dict(family='Courier New', size=13, color='#00FF41')
+        )
     ), row=1, col=1)
 
     if 'VWAP' in indicators:
@@ -175,6 +201,8 @@ def _build_price_volume_figure(data, indicators, title, timeframe_label, ticker=
     if signals:
         buy_signals = [s for s in signals if s['type'] == 'buy']
         sell_signals = [s for s in signals if s['type'] == 'sell']
+        
+        print(f"📍 Chart {timeframe_label}: {len(buy_signals)} buy, {len(sell_signals)} sell signals")
         
         if buy_signals:
             buy_times = [s['timestamp'] for s in buy_signals]
@@ -216,11 +244,69 @@ def _build_price_volume_figure(data, indicators, title, timeframe_label, ticker=
                 showlegend=True
             ), row=1, col=1)
 
-    fig.update_layout(template='plotly_dark', hovermode='closest', showlegend=True,
-                      margin=dict(l=60, r=30, t=40, b=40), autosize=True, height=700)
-    fig.update_yaxes(range=[y0, y1], row=1, col=1, title_text='Price ($)')
-    fig.update_yaxes(title_text='Volume', row=2, col=1)
-    fig.update_xaxes(title_text='Time', row=2, col=1, tickformat='%I:%M %p')
+    fig.update_layout(
+        template='plotly_dark', 
+        hovermode='x unified',  # Show all values at same time point
+        showlegend=True,
+        margin=dict(l=60, r=30, t=40, b=40), 
+        autosize=True, 
+        height=700,
+        dragmode='zoom',
+        modebar_add=['v1hovermode', 'toggleSpikelines'],
+        # Better grid and tick behavior
+        xaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(128, 128, 128, 0.2)',
+            tickmode='auto',
+            nticks=20,  # More tick marks for better granularity
+            showspikes=True,
+            spikemode='across',
+            spikesnap='cursor',
+            spikecolor='#00FF41',
+            spikethickness=1
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(128, 128, 128, 0.2)',
+            tickmode='auto',
+            nticks=15,  # More y-axis ticks for better price resolution
+            showspikes=True,
+            spikemode='across',
+            spikesnap='cursor',
+            spikecolor='#00FF41',
+            spikethickness=1
+        )
+    )
+    fig.update_yaxes(
+        range=[y0, y1], 
+        row=1, col=1, 
+        title_text='Price ($)',
+        fixedrange=False,
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+    fig.update_yaxes(
+        title_text='Volume', 
+        row=2, col=1, 
+        fixedrange=False,
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)'
+    )
+    fig.update_xaxes(
+        title_text='Time', 
+        row=2, col=1, 
+        tickformat='%I:%M %p', 
+        fixedrange=False,
+        showgrid=True,
+        gridwidth=1,
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        tickmode='auto',
+        nticks=20
+    )
 
     return fig
 
@@ -261,18 +347,64 @@ def create_chart(copilot_data, data_15m, indicators_15m, ticker="SPY", data_1m=N
 
 
 def build_and_cache_payload(ticker="SPY"):
-    global _cached_payload, _cached_at, _is_building
-    if _is_building:
-        return
-    _is_building = True
+    global _ticker_cache
+    
+    # Initialize ticker cache entry if needed
+    with _cache_lock:
+        if ticker not in _ticker_cache:
+            _ticker_cache[ticker] = {'payload': None, 'cached_at': 0, 'is_building': False}
+        
+        if _ticker_cache[ticker]['is_building']:
+            return
+        _ticker_cache[ticker]['is_building'] = True
+    
     try:
         copilot = MarketCopilot(ticker=ticker)
-        data_5m = copilot.data_fetcher.fetch_data('5m', '5d')
-        time.sleep(REQUEST_DELAY)
-        data_15m = copilot.data_fetcher.fetch_data('15m', '1mo')
+        
+        # Fetch all data in parallel using threading for faster response
+        import concurrent.futures
+        
+        def fetch_5m():
+            try:
+                return copilot.data_fetcher.fetch_data('5m', '5d')
+            except Exception as e:
+                print(f"Error fetching 5m data for {ticker}: {e}")
+                return None
+        
+        def fetch_15m():
+            try:
+                return copilot.data_fetcher.fetch_data('15m', '1mo')
+            except Exception:
+                try:
+                    return copilot.data_fetcher.fetch_data('15m', '5d')
+                except Exception as e:
+                    print(f"Error fetching 15m data for {ticker}: {e}")
+                    return None
+        
+        def fetch_1m():
+            try:
+                return copilot.data_fetcher.fetch_data('1m', '1d')
+            except Exception as e:
+                print(f"Error fetching 1m data for {ticker}: {e}")
+                return None
+        
+        # Fetch all timeframes concurrently
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            future_5m = executor.submit(fetch_5m)
+            future_15m = executor.submit(fetch_15m)
+            future_1m = executor.submit(fetch_1m)
+            
+            data_5m = future_5m.result()
+            data_15m = future_15m.result()
+            data_1m = future_1m.result()
 
-        if data_5m is None or data_15m is None or data_5m.empty or data_15m.empty:
+        if data_5m is None or data_5m.empty:
+            print(f"No 5m data available for {ticker}")
             return
+        
+        if data_15m is None or data_15m.empty:
+            print(f"No 15m data available for {ticker}, using 5m data for both timeframes")
+            data_15m = data_5m.copy()
 
         data_5m = data_5m.tail(78)
         data_15m = data_15m.tail(100)
@@ -285,18 +417,11 @@ def build_and_cache_payload(ticker="SPY"):
 
         copilot_data = {'data_5m': data_5m, 'indicators_5m': indicators_5m, 'bias_5m': bias_5m.value, 'bias_15m': bias_15m.value}
 
-        # optional 1m
-        data_1m = None
+        # Process 1m data if available
         indicators_1m = None
-        try:
-            data_1m = copilot.data_fetcher.fetch_data('1m', '1d')
-            time.sleep(REQUEST_DELAY)
-            if data_1m is not None and not data_1m.empty:
-                data_1m = data_1m.tail(240)
-                indicators_1m = calculate_all_indicators(data_1m, INDICATORS)
-        except Exception:
-            data_1m = None
-            indicators_1m = None
+        if data_1m is not None and not data_1m.empty:
+            data_1m = data_1m.tail(240)
+            indicators_1m = calculate_all_indicators(data_1m, INDICATORS)
 
         figs, walls, signals, iv_metrics, pcr, gex = create_chart(copilot_data, data_15m, indicators_15m, ticker=ticker, data_1m=data_1m, indicators_1m=indicators_1m)
 
@@ -360,11 +485,23 @@ def build_and_cache_payload(ticker="SPY"):
         }
 
         with _cache_lock:
-            _cached_payload = payload
-            _cached_at = time.time()
+            _ticker_cache[ticker]['payload'] = payload
+            _ticker_cache[ticker]['cached_at'] = time.time()
 
+    except Exception as e:
+        print(f"ERROR building payload for {ticker}: {e}")
+        import traceback
+        traceback.print_exc()
+        # Store error payload so frontend knows what happened
+        with _cache_lock:
+            _ticker_cache[ticker]['payload'] = {
+                'error': f'Failed to fetch data for {ticker}: {str(e)}',
+                'ticker': ticker
+            }
+            _ticker_cache[ticker]['cached_at'] = time.time()
     finally:
-        _is_building = False
+        with _cache_lock:
+            _ticker_cache[ticker]['is_building'] = False
 
 
 def periodic_refresh():
@@ -435,31 +572,29 @@ def get_analysis():
         # Get ticker from query parameter (default to SPY)
         ticker = request.args.get('ticker', 'SPY').upper()
         
-        # If cache is fresh for this ticker, return it
-        cache_key = f"{ticker}_cached_payload"
+        # Check if cache exists and is fresh for this ticker
         with _cache_lock:
-            if cache_key in globals() and (time.time() - _cached_at) < CACHE_TTL:
-                return jsonify(globals()[cache_key])
+            if ticker in _ticker_cache:
+                cache_entry = _ticker_cache[ticker]
+                if cache_entry['payload'] and (time.time() - cache_entry['cached_at']) < CACHE_TTL:
+                    return jsonify(cache_entry['payload'])
 
         # Build on-demand if cache empty or stale
-        # Trigger a build; if another thread is already building, wait a short
-        # time for it to finish to avoid returning an empty response.
         build_and_cache_payload(ticker)
 
-        # small wait loop to allow background builder to populate cache (race
-        # between request and background thread). Wait up to 5 seconds.
+        # Wait for build to complete (up to 5 seconds)
         wait_start = time.time()
         while True:
             with _cache_lock:
-                if _cached_payload:
+                if ticker in _ticker_cache and _ticker_cache[ticker]['payload']:
                     break
             if time.time() - wait_start > 5:
                 break
             time.sleep(0.2)
 
         with _cache_lock:
-            if _cached_payload:
-                resp = dict(_cached_payload)
+            if ticker in _ticker_cache and _ticker_cache[ticker]['payload']:
+                resp = dict(_ticker_cache[ticker]['payload'])
             else:
                 # Return a safe, minimal payload to avoid 500s on first-hit
                 # (frontend will still show loading/placeholder values).
