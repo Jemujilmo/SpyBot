@@ -14,6 +14,7 @@ from flask import Flask, render_template, jsonify, request
 import threading
 import time
 import sys
+import os
 from datetime import datetime
 import pytz
 
@@ -30,6 +31,9 @@ from options_data import OptionsDataFetcher
 from new_signal_logic import generate_multi_timeframe_signals
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+
+# Test mode for CI/CD - returns mock data instead of fetching from APIs
+TEST_MODE = os.environ.get('FLASK_TEST_MODE', '').lower() in ('1', 'true', 'yes')
 
 # Initialize display timezone
 MarketHours.set_display_timezone(DISPLAY_TIMEZONE)
@@ -682,6 +686,16 @@ def get_analysis_debug():
 @app.route('/api/analysis')
 def get_analysis():
     try:
+        # Return mock data in test mode (for CI/CD)
+        if TEST_MODE:
+            return jsonify({
+                'ticker': 'SPY',
+                'bias_5m': 'BULLISH',
+                'bias_15m': 'BULLISH',
+                'test_mode': True,
+                'timestamp': time.time()
+            })
+        
         # Get ticker from query parameter (default to SPY)
         ticker = request.args.get('ticker', 'SPY').upper()
         

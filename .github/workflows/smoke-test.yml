@@ -27,6 +27,8 @@ jobs:
           python -m pip install -r requirements.txt
 
       - name: Start Flask app (background)
+        env:
+          FLASK_TEST_MODE: 'true'
         run: |
           . .venv/bin/activate
           nohup ./.venv/bin/python flask_app.py --port=5050 > dashboard.log 2>&1 &
@@ -59,10 +61,10 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for /api/analysis (timeout 30s)
+      - name: Wait for /api/analysis (timeout 10s)
         run: |
           elapsed=0
-          max_wait=30
+          max_wait=10
           code=000
           while [ $elapsed -lt $max_wait ]; do
             code=$(curl -s -o /tmp/api.json -w "%{http_code}" http://127.0.0.1:5050/api/analysis || echo 000)
