@@ -558,6 +558,27 @@ def build_and_cache_payload(ticker="SPY"):
         except Exception:
             gamma_score = 0
 
+        # Get market status
+        market_status_info = MarketHours.get_market_status()
+        
+        # Get latest candle times for each timeframe
+        latest_times = {}
+        try:
+            if data_1m is not None and not data_1m.empty:
+                latest_times['1m'] = MarketHours.to_display_time(data_1m.index[-1]).strftime('%I:%M %p CT')
+        except Exception:
+            pass
+        
+        try:
+            latest_times['5m'] = MarketHours.to_display_time(data_5m.index[-1]).strftime('%I:%M %p CT')
+        except Exception:
+            pass
+        
+        try:
+            latest_times['15m'] = MarketHours.to_display_time(data_15m.index[-1]).strftime('%I:%M %p CT')
+        except Exception:
+            pass
+
         payload = {
             'chart_1m': _serialize_fig(figs.get('1m')) if figs.get('1m') is not None else None,
             'chart_5m': _serialize_fig(figs.get('5m')),
@@ -575,6 +596,11 @@ def build_and_cache_payload(ticker="SPY"):
             'iv_metrics': iv_metrics,
             'put_call_ratio': pcr,
             'gamma_exposure': gex,
+            'market_status': {
+                'status': market_status_info['status'],
+                'is_open': market_status_info['is_open']
+            },
+            'latest': latest_times,
         }
 
         with _cache_lock:
